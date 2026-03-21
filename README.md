@@ -1,67 +1,96 @@
+# 📇 AI-Powered Business Card Reader
 
-📇 Visiting Card Reader to Excel Parser
+A Full-Stack Intelligent OCR application that transforms physical business cards into structured digital data. Built with **FastAPI**, **React**, and **Google Gemini 1.5 Flash**.
 
-A sophisticated full-stack application that transforms physical visiting cards into structured digital data. This project employs a hybrid extraction engine combining Rule-Based systems (Regex), Natural Language Processing (SpaCy), and Large Language Models (Gemini 1.5 Flash).
+---
 
-🚀 The Hybrid Extraction Strategy
+## 🚀 Key Features
 
-To ensure maximum accuracy and cost-efficiency, the project uses a tiered extraction approach:
+* **Multi-Pass OCR:** Uses Tesseract with three different image preprocessing layers (Standard, Inverted, Dilated) to ensure maximum text accuracy.
+* **Gemini AI Integration:** Leverages the `gemini-1.5-flash` multimodal model to clean raw OCR "garbage" and intelligently map fields like Owner, Company, and Address.
+* **Dual-Source Input:** Upload an existing image file or capture a live photo directly from your webcam/mobile camera.
+* **Relational Storage:** Seamlessly saves refined data into a **MySQL** database.
+* **Data Export:** Export your entire contact database as a professional **.CSV** file for use in Excel or CRM tools.
+* **Responsive UI:** A modern, "glassmorphism" inspired dashboard built with **Tailwind CSS**.
 
-Level 1: Rule-Based Extraction (Regex)
+## 🛠️ Tech Stack
 
-=>Purpose: Blazing-fast extraction of predictable patterns.
+**Frontend:**
+* React.js (Hooks, Refs, Context)
+* Tailwind CSS (Styling & Animations)
+* Axios (API Communication)
+* React-Webcam (Camera Integration)
 
-=>Used For: Phone numbers, Email addresses, and URLs.
+**Backend:**
+* FastAPI (Asynchronous Python Framework)
+* Pytesseract (OCR Engine)
+* OpenCV (Image Processing & Perspective Transform)
+* spaCy (Natural Language Processing)
+* Google Generative AI (Gemini SDK)
 
-=>Why: Regex handles these with 100% accuracy without needing an AI call.
+**Database:**
+* MySQL (Persistent Storage)
+* Pandas (Data Manipulation & Export)
+
+## 📦 Installation & Setup
+
+### 1. Prerequisites
+* Python 3.8+
+* Node.js & npm
+* MySQL Server
+* [Tesseract OCR Engine](https://github.com/UB-Mannheim/tesseract/wiki) installed on your system.
+
+### 2. Backend Setup
+1. Clone the repository:
+   ```bash
+   git clone [https://github.com/Janitberwal/Visiting-Card-Reader-.git](https://github.com/Janitberwal/Visiting-Card-Reader-.git)
+   cd Visiting-Card-Reader-
+
+2.Create and activate a virtual environment:
 
 
-Level 2: NLP & NER (SpaCy)
+Bash
+python -m venv venv
+source venv/bin/activate  # On Windows: .\venv\Scripts\activate
 
-=>Purpose: Contextual understanding of entities.
+3.Install dependencies:
 
-=>Used For: Identifying Person Names and Locations (City/Country).
+Bash
+pip install -r requirements.txt
 
-=>Why: SpaCy’s Named Entity Recognition (NER) helps distinguish between a "Company Name" and a "Person Name" by analyzing the surrounding text structure.
+4.Create a .env file in the root directory:
 
-Level 3: Cognitive Parsing (Gemini 1.5 Flash)
+Code snippet
+GEMINI_API_KEY=your_google_api_key_here
 
-=>Purpose: Handling complex layouts and "messy" OCR data.
 
-=>Used For: Designations, Company branding, and Cross-verifying low-confidence fields.
+5. Frontend Setup
+Navigate to the UI folder:
 
-=>Why: When text is jumbled or non-linear, the LLM acts as the "final brain" to reconstruct the data logically.
-
-🛠️ Tech Stack
-
-Frontend =>	React.js,  CSS Modules
-
-Backend  =>	FastAPI (Python), Uvicorn
-
-AI/NLP	=> Google Gemini 1.5 Flash, SpaCy (en_core_web_sm)
-
-Data Processing	=> Regex (re), Openpyxl (Excel), Pandas
-
-⚙️ Setup & Installation
-
-1. Backend Setup
-
-# Install core dependencies
-pip install fastapi uvicorn google-generativeai spacy pandas openpyxl
-
-# Download SpaCy model
-python -m spacy download en_core_web_sm
-
-# Run the server
-uvicorn main.py:app --reload
-
-2. Frontend Setup
-
+Bash
 cd card-reader-ui
 
+6.Install packages:
+
+Bash
 npm install
 
+7.Start the React development server:
+
+Bash
 npm start
 
+📸 Screenshots
+
+<img width="1916" height="944" alt="image" src="https://github.com/user-attachments/assets/6ea57c77-ca9d-4a03-aedd-f620e8b6a837" />
+
+
+<img width="1472" height="643" alt="image" src="https://github.com/user-attachments/assets/20af429a-a757-409c-8b1e-d03035f3bba0" />
+
+
+<img width="1894" height="917" alt="image" src="https://github.com/user-attachments/assets/ed4a58f2-4f08-47dc-9671-4e01e639a8ae" />
+
+
+<img width="1026" height="387" alt="image" src="https://github.com/user-attachments/assets/db87f279-9f12-485c-b14b-ce5ec64b900b" />
 
 
