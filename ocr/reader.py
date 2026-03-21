@@ -9,6 +9,7 @@ import json
 import sys
 import os
 from dotenv import load_dotenv
+import platform
 
 load_dotenv()  # load the env file
 
@@ -24,7 +25,13 @@ else:
     genai.configure(api_key=api_key)
     model = genai.GenerativeModel('gemini-1.5-flash')
 
-pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+#pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+# Smart Tesseract Path Handling
+if platform.system() == "Windows":
+    # Use your local Windows path
+    pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
+else:
+    pass
 
 # function order points to arrange all 4 points in order
 def order_points(pts):
@@ -214,10 +221,10 @@ def extract_raw_text(image_path):
             try:
                 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-                from database_manager import save_to_excel
-                save_to_excel(final_refined_data)
+                from database_manager import save_to_mysql
+                save_to_mysql(final_refined_data)
 
-                print("Successfully saved to Excel")
+                print("Successfully saved to DataBase")
             except Exception as save_err:
                 print(f"Error calling database manager : {save_err}")
 

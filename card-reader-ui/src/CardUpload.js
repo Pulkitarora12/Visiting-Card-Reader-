@@ -3,7 +3,10 @@ import axios from "axios";
 import Webcam from "react-webcam";
 
 
+
 function CardUpload() {
+  const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+
   const [file, setFile] = useState(null);
   const [data, setData] = useState({
     primary_owner: "",
@@ -15,6 +18,10 @@ function CardUpload() {
   const [loading, setLoading] = useState(false);
   const [isExtracted, setIsExtracted] = useState(false);
   
+  //state to fetch the db 
+  const [databaseRecords, setDatabaseRecords] = useState([]);
+  const [showDatabase, setShowDatabase] = useState(false);
+
   // new state for camera
   const[sourceType , setSourceType] = useState(null);
   const [isPreviewing, setIsPreviewing] = useState(false); //preview the clicked photo
@@ -59,7 +66,7 @@ function CardUpload() {
     formData.append("file", file);
 
     try {
-      const response = await axios.post("http://localhost:8000/extract", formData);
+      const response = await axios.post(`${API_BASE_URL}/extract`, formData);
       const resData = response.data.data;
       
       // Map data to state for editing
@@ -80,13 +87,57 @@ function CardUpload() {
   };
 
   // 3. Save Function for edited data
-  const handleSaveToExcel = async () => {
+  const handleSaveToDatabase = async () => {
     try {
-      await axios.post("http://localhost:8000/save", data);
-      alert("✅ Data saved to Excel successfully!");
+      await axios.post(`${API_BASE_URL}/save`, data);
+      alert("✅ Data saved to Database successfully!");
     } catch (error) {
       console.error("Save failed", error);
       alert("❌ Failed to save data.");
+    }
+  };
+  // 4. Fetch all saved cards from the database
+  const handleViewDatabase = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/cards`);
+      setDatabaseRecords(response.data.data);
+      setShowDatabase(true); // Switch the view to show the table
+    } catch (error) {
+      console.error("Failed to fetch database", error);
+      alert("Could not load database records.");
+    }
+  }; 
+  const handleDownloadSingle = (record) => {
+    // Format the data as a CSV string
+    const csvContent = "data:text/csv;charset=utf-8," 
+      + "Owner,Company,Email,Phone,Address\n"
+      + `"${record.owner_name}","${record.company_name}","${record.emails}","${record.phone_numbers}","${record.address}"`;
+    
+    // Create a hidden link and trigger the download
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement("a");
+    link.setAttribute("href", encodedUri);
+    
+    // Name the file based on the owner's name
+    const fileName = record.owner_name ? record.owner_name.replace(/\s+/g, '_') : 'contact';
+    link.setAttribute("download", `${fileName}_card.csv`);
+    
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleDelete = async (id) => {
+    // Add a quick confirmation popup so you don't delete by accident
+    if (!window.confirm("Are you sure you want to delete this card?")) return;
+    
+    try {
+      await axios.delete(`${API_BASE_URL}/cards/${id}`);
+      // Remove the deleted card from the screen without reloading the page
+      setDatabaseRecords(databaseRecords.filter(record => record.id !== id));
+    } catch (error) {
+      console.error("Failed to delete", error);
+      alert("Failed to delete the card.");
     }
   };
 
@@ -103,22 +154,35 @@ function CardUpload() {
         </header>
 
         {/* 1. CHOICE MENU */}
+        {/* 1. CHOICE MENU */}
         {!isExtracted && !sourceType && (
           <div className="bg-white p-10 rounded-2xl shadow-xl text-center border border-gray-100 animate-fade-in">
             <h2 className="text-2xl font-bold mb-8 text-gray-700">How would you like to start?</h2>
+            
             <div className="flex flex-col md:flex-row gap-8 justify-center">
               <button onClick={() => setSourceType('file')} className="group flex-1 bg-blue-50 py-10 rounded-2xl border-2 border-blue-100 hover:border-blue-400 hover:bg-white transition-all flex flex-col items-center gap-4 shadow-sm hover:shadow-md">
                 <span className="text-5xl transition-transform group-hover:scale-110">📁</span>
                 <span className="font-bold text-blue-700 text-lg uppercase">Upload File</span>
               </button>
+              
               <button onClick={() => setSourceType('camera')} className="group flex-1 bg-purple-50 py-10 rounded-2xl border-2 border-purple-100 hover:border-purple-400 hover:bg-white transition-all flex flex-col items-center gap-4 shadow-sm hover:shadow-md">
                 <span className="text-5xl transition-transform group-hover:scale-110">📸</span>
                 <span className="font-bold text-purple-700 text-lg uppercase">Take Photo</span>
               </button>
             </div>
+
+            {/* --- NEW CENTERED VIEW DATABASE BUTTON --- */}
+            <div className="mt-10 pt-8 border-t border-gray-100">
+              <button 
+                onClick={handleViewDatabase} 
+                className="inline-flex items-center gap-2 bg-gray-800 text-white px-8 py-3 rounded-xl font-bold hover:bg-black hover:scale-105 transition shadow-lg active:scale-95"
+              >
+                🗄️ View Existing Database
+              </button>
+              <p className="text-gray-400 text-sm mt-3">Access and manage previously saved business cards</p>
+            </div>
           </div>
         )}
-
         {/* 2. CAMERA INTERFACE: With Switch Toggle */}
         {!isExtracted && sourceType === 'camera' && !isPreviewing && (
           <div className="bg-white p-8 rounded-2xl shadow-lg text-center border border-gray-100 animate-fade-in">
@@ -187,7 +251,16 @@ function CardUpload() {
               <div className="flex-grow flex items-center justify-center bg-gray-50 rounded-xl border border-gray-100 overflow-hidden shadow-inner">
                 <img src={URL.createObjectURL(file)} alt="Card" className="rounded-lg max-h-full w-auto p-2" />
               </div>
-              <button onClick={() => window.open('http://localhost:8000/docs', '_blank')} className="mt-6 w-full bg-gray-800 text-white py-3 rounded-xl font-bold hover:bg-black transition shadow-lg flex items-center justify-center gap-2"> View Database</button>
+              
+              <button onClick={handleViewDatabase} className="mt-6 w-full bg-gray-800 text-white py-3 rounded-xl font-bold hover:bg-black transition shadow-lg flex items-center justify-center gap-2"> 
+                 🗄️ View Database 
+                   </button>
+             <a 
+                href={`${API_BASE_URL}/download-all`}
+                download 
+                   className="mt-6 w-full bg-gray-800 text-white py-3 rounded-xl font-bold hover:bg-black transition shadow-lg flex items-center justify-center gap-2">
+                 Download Full DB (.csv)
+                </a>
             </div>
 
             <div className="bg-white p-6 rounded-2xl shadow-md flex flex-col h-full border border-gray-100">
@@ -203,9 +276,70 @@ function CardUpload() {
                   <label className="text-xs font-bold text-gray-400 uppercase tracking-widest ml-1">Address</label>
                   <textarea value={data.address} onChange={(e) => setData({...data, address: e.target.value})} className="w-full border-gray-200 bg-gray-50 border p-3 rounded-xl focus:ring-2 focus:ring-blue-500 focus:bg-white outline-none transition" rows="3" />
                 </div>
-                <button onClick={handleSaveToExcel} className="w-full bg-green-500 text-white py-4 rounded-xl font-bold hover:bg-green-600 shadow-lg active:scale-95 transition mt-4"> Save to Excel</button>
+                <button onClick={handleSaveToDatabase} className="w-full bg-green-500 text-white py-4 rounded-xl font-bold hover:bg-green-600 shadow-lg active:scale-95 transition mt-4"> Save to Database</button>
               </div>
-              <a href="http://localhost:8000/download-excel" download className="mt-6 w-full bg-gray-800 text-white py-3 rounded-xl font-bold text-center hover:bg-black transition flex items-center justify-center gap-2 shadow-lg"> Download Excel</a>
+              
+            </div>
+          </div>
+        )}
+         {/* 6. DATABASE VIEWER SECTION */}
+        {showDatabase && (
+          <div className="mt-12 bg-white p-8 rounded-2xl shadow-xl border border-gray-100 animate-fade-in">
+            <div className="flex justify-between items-center mb-6">
+              <h2 className="text-2xl font-bold text-gray-800">Saved Business Cards</h2>
+              <button onClick={() => setShowDatabase(false)} className="text-gray-500 hover:text-red-500 font-bold">
+                Close Viewer ✖
+              </button>
+            </div>
+            
+            {/* THIS IS THE UPDATED TABLE AREA */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-left border-collapse">
+                <thead>
+                  <tr className="bg-gray-100 text-gray-600 text-sm uppercase tracking-wider">
+                    <th className="p-4 rounded-tl-lg">Owner</th>
+                    <th className="p-4">Company</th>
+                    <th className="p-4">Email</th>
+                    <th className="p-4">Phone</th>
+                    <th className="p-4">Address</th>
+                    <th className="p-4 rounded-tr-lg text-center">Actions</th> {/* NEW HEADER */}
+                  </tr>
+                </thead>
+                <tbody className="text-sm text-gray-700">
+                  {databaseRecords.length === 0 ? (
+                    <tr><td colSpan="6" className="p-6 text-center text-gray-400">No cards saved yet.</td></tr>
+                  ) : (
+                    databaseRecords.map((record) => (
+                      <tr key={record.id} className="border-b border-gray-100 hover:bg-gray-50 transition">
+                        <td className="p-4 font-bold text-gray-900">{record.owner_name}</td>
+                        <td className="p-4">{record.company_name}</td>
+                        <td className="p-4 text-blue-600">{record.emails}</td>
+                        <td className="p-4">{record.phone_numbers}</td>
+                        <td className="p-4 text-xs">{record.address}</td>
+                        
+                        {/* NEW BUTTONS */}
+                        <td className="p-4 flex gap-2 justify-center">
+                          <button 
+                            onClick={() => handleDownloadSingle(record)} 
+                            className="bg-blue-100 text-blue-700 px-3 py-1 rounded hover:bg-blue-200 transition text-xs font-bold"
+                            title="Download CSV"
+                          >
+                            ⬇️
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(record.id)} 
+                            className="bg-red-100 text-red-700 px-3 py-1 rounded hover:bg-red-200 transition text-xs font-bold"
+                            title="Delete"
+                          >
+                            🗑️
+                          </button>
+                        </td>
+                        
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
             </div>
           </div>
         )}
