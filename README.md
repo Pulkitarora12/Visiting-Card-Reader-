@@ -80,7 +80,7 @@ npm install
 Bash
 npm start
 
-📸 Screenshots
+📸 Screenshots of the card - reader
 
 <img width="1916" height="944" alt="image" src="https://github.com/user-attachments/assets/6ea57c77-ca9d-4a03-aedd-f620e8b6a837" />
 
