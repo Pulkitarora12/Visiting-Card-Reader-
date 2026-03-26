@@ -6,9 +6,9 @@ import os
 #  CREDENTIALS FOR YOUR LOCAL SETUP
 db_config = {
     'host': 'localhost',
-    'user': 'root',       # Usually 'root' for local dev
-    'password': 'password', # Your MySQL password
-    'database': 'visiting_cards_db'
+    'user': os.getenv("DB_NAME"),       # Usually 'root' for local dev
+    'password': os.getenv("DB_PASSWORD"),
+    'database': os.getenv("DB_PASSWORD")
 }
 
 def create_database_and_table():
