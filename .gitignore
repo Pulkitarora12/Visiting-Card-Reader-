@@ -11,3 +11,6 @@ env/
 
 # Node / React
 node_modules/
+
+# Data
+data/

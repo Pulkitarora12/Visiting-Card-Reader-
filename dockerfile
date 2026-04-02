@@ -1,36 +1,37 @@
-# Use an official Python runtime as a parent image
-FROM python:3.10-slim
+FROM python:3.11-slim
 
-# 1. Install System Dependencies
+# Install system dependencies including Tesseract
 RUN apt-get update && apt-get install -y \
     tesseract-ocr \
-    libtesseract-dev \
-    libgl1-mesa-glx \
+    tesseract-ocr-eng \
     libglib2.0-0 \
-    && apt-get clean \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgl1 \
     && rm -rf /var/lib/apt/lists/*
 
-# 2. Set the working directory
 WORKDIR /app
 
-# 3. Copy only requirements first
-COPY requirements.txt .
+# Install CPU-only torch first to keep image smaller
+RUN pip install --no-cache-dir torch==2.5.1+cpu torchvision==0.20.1+cpu \
+    --index-url https://download.pytorch.org/whl/cpu
 
-# 4. Install Python dependencies
+# Copy and install requirements
+COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. Download the spaCy model
-RUN python -m spacy download en_core_web_sm
+# Copy app code
+COPY app.py .
+COPY database_manager.py .
+COPY ocr/ ./ocr/
 
-# 6. Copy the rest of your application code
-COPY . .
+# Create data directory
+RUN mkdir -p data/samples
 
-# 7. Create data directory for uploads and exports
-RUN mkdir -p data/samples && chmod 777 data/samples
+# Set Tesseract path for Linux
+ENV TESSERACT_CMD=/usr/bin/tesseract
 
-# 8. Expose the port
 EXPOSE 8000
 
-# 9. Command to run the application
-# Using --proxy-headers is recommended if you later put this behind Nginx
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000", "--proxy-headers"]
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]

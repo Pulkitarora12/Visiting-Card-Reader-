@@ -4,7 +4,8 @@ import re
 import cv2
 import numpy as np
 import spacy
-import google.generativeai as genai
+from google import genai
+from google.genai import types
 import json
 import sys
 import os
@@ -21,17 +22,17 @@ nlp = spacy.load("en_core_web_sm")
 # AI setup
 if not api_key:
     print("Error: GEMINI_API_KEY not found in .env file!")
+    client = None
 else:
-    genai.configure(api_key=api_key)
-    model = genai.GenerativeModel('gemini-1.5-flash')
+    client = genai.Client(api_key=api_key)
 
-#pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 # Smart Tesseract Path Handling
 if platform.system() == "Windows":
-    # Use your local Windows path
     pytesseract.pytesseract.tesseract_cmd = r'C:\Program Files\Tesseract-OCR\tesseract.exe'
 else:
-    pass
+    tesseract_cmd = os.getenv("TESSERACT_CMD")
+    if tesseract_cmd:
+        pytesseract.pytesseract.tesseract_cmd = tesseract_cmd
 
 # function order points to arrange all 4 points in order
 def order_points(pts):
@@ -93,47 +94,39 @@ def get_image_variants(card_img):
 # canny edge detection, to detect the edges of card
 def find_card_contours(image_path):
     img = cv2.imread(image_path)
-    # resize
     orig = img.copy()
     ratio = img.shape[0] / 500.0
     img = cv2.resize(img, (int(img.shape[1] / ratio), 500))
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     blurred = cv2.GaussianBlur(gray, (5, 5), 0)
-    # canny edge detection
     edged = cv2.Canny(blurred, 75, 200)
-    # make lines and the rectangle polygon
     contours, _ = cv2.findContours(edged.copy(), cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE)
     contours = sorted(contours, key=cv2.contourArea, reverse=True)[:5]
     for c in contours:
         peri = cv2.arcLength(c, True)
         approx = cv2.approxPolyDP(c, 0.02 * peri, True)
-        # if it has 4 contour points we found card
         if len(approx) == 4:
             return approx.reshape(4, 2) * ratio
     return None
 
-# two helper functions to find owner and company
 def clean_name(text):
-    text = re.sub(r'\d{3,}', '', text)  # remove phone-like numbers
-    text = re.sub(r'[^A-Za-z ]', '', text)  # remove symbols
+    text = re.sub(r'\d{3,}', '', text)
+    text = re.sub(r'[^A-Za-z ]', '', text)
     text = re.sub(r'\s+', ' ', text)
     return text.strip()
 
 def pick_primary_owner(persons, lines):
-    # 1️ Highest priority: Prop / Proprietor / Owner lines
     for line in lines:
         low = line.lower()
         if "prop." in low or "proprietor" in low or "owner" in low:
             name = clean_name(line)
             if len(name.split()) >= 2:
                 return name
-    # 2️ Fallback: spaCy PERSON entities (cleaned)
     clean_persons = []
     for p in persons:
         p_clean = clean_name(p)
         if len(p_clean.split()) >= 2:
             clean_persons.append(p_clean)
-    # 3️ Choose longest meaningful name
     return max(clean_persons, key=len, default="")
 
 def pick_primary_company(lines, orgs):
@@ -159,7 +152,6 @@ def extract_raw_text(image_path):
         else:
             card_img = original_img
 
-        # 3 layer ocr
         variants = get_image_variants(card_img)
         all_text_results = []
         for i, v_img in enumerate(variants):
@@ -170,16 +162,13 @@ def extract_raw_text(image_path):
             if text_pass.strip():
                 all_text_results.append(f"--- PASS {i + 1} ---\n{text_pass.strip()}\n")
 
-        # combine all passes for llm
         text = "\n\n".join(all_text_results)
         lines = [line.strip() for line in text.split('\n') if line.strip()]
 
         doc = nlp(text)
-        # look for name and organization
         persons = [ent.text for ent in doc.ents if ent.label_ == 'PERSON' and len(ent.text) > 3]
         orgs = [ent.text for ent in doc.ents if ent.label_ == 'ORG']
 
-        # rules
         email_pattern = r'[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+'
         phone_pattern = r'(\+?\d[\d\s\-]{8,}\d)'
         pin_pattern = r'\b\d{6}\b'
@@ -211,34 +200,29 @@ def extract_raw_text(image_path):
             "raw_garbage": text.strip()
         }
 
-        # now polish (hybrid approach)
         print("Refining data with LLM...")
         final_refined_data = redefine_with_llm(data, image_path)
         if final_refined_data:
             final_refined_data["debug_raw"] = text.strip()
 
-            #call database manager to save to excel
             try:
                 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-
                 from database_manager import save_to_mysql
                 save_to_mysql(final_refined_data)
-
                 print("Successfully saved to DataBase")
             except Exception as save_err:
                 print(f"Error calling database manager : {save_err}")
 
             return final_refined_data
-        return data  # fallback if llm fails
+        return data
     except Exception as e:
         return f"Error: {str(e)}"
 
 
 def redefine_with_llm(extracted_facts, original_image_path):
     import json
-    from PIL import Image
+    from PIL import Image as PILImage
 
-    # Normalize phone numbers and emails first
     def normalize_phone(phone_list):
         clean_phones = []
         for p in phone_list:
@@ -269,7 +253,7 @@ def redefine_with_llm(extracted_facts, original_image_path):
     3. KEEP the primary owner_name unless it is clearly incorrect.
     4. KEEP the primary company_name unless it is clearly incorrect.
     5. Phone Numbers: Combine broken segments. Fix 'O' to '0' or 'I' to '1' if seen in OCR.
-    6. Ignore: Religious slogans like 'JAI MATA DI' , marketing taglines, or "Om/786" symbols.
+    6. Ignore: Religious slogans like 'JAI MATA DI', marketing taglines, or "Om/786" symbols.
     7. Do NOT invent information. If a field is missing, return "".
     Input Data:
     --------------------------------
@@ -298,11 +282,32 @@ def redefine_with_llm(extracted_facts, original_image_path):
     """
 
     try:
-        img = Image.open(original_image_path)
-        response = model.generate_content(
-            [prompt, img],
-            generation_config={"temperature": 0.1}
+        if client is None:
+            return None
+
+        # Read image and convert to bytes
+        with open(original_image_path, "rb") as f:
+            image_bytes = f.read()
+
+        # Detect media type
+        ext = original_image_path.lower().split('.')[-1]
+        media_type_map = {
+            "jpg": "image/jpeg",
+            "jpeg": "image/jpeg",
+            "png": "image/png",
+            "webp": "image/webp",
+        }
+        media_type = media_type_map.get(ext, "image/jpeg")
+
+        response = client.models.generate_content(
+            model="gemini-1.5-flash",
+            contents=[
+                types.Part.from_bytes(data=image_bytes, mime_type=media_type),
+                types.Part.from_text(text=prompt)
+            ],
+            config=types.GenerateContentConfig(temperature=0.1)
         )
+
         clean_json = response.text.replace('```json', '').replace('```', '').strip()
         result = json.loads(clean_json)
         if not result.get("phone_numbers"):
@@ -310,5 +315,6 @@ def redefine_with_llm(extracted_facts, original_image_path):
         if not result.get("emails"):
             result["emails"] = emails
         return result
-    except:
+    except Exception as e:
+        print(f"LLM error: {e}")
         return None
