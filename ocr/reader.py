@@ -300,7 +300,7 @@ def redefine_with_llm(extracted_facts, original_image_path):
         media_type = media_type_map.get(ext, "image/jpeg")
 
         response = client.models.generate_content(
-            model="gemini-1.5-flash",
+            model="gemini-2.5-flash",
             contents=[
                 types.Part.from_bytes(data=image_bytes, mime_type=media_type),
                 types.Part.from_text(text=prompt)

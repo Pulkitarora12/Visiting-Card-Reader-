@@ -1,3 +1,5 @@
+import os
+
 from fastapi import FastAPI, UploadFile, File, Body # Added Body here
 from fastapi.responses import FileResponse          # Added FileResponse here
 from ocr.reader import extract_raw_text
@@ -11,7 +13,7 @@ app = FastAPI()
 # cross-origin resource sharing 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:3000"],
+    allow_origins=os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(","),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

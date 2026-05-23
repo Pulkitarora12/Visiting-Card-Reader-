@@ -1,0 +1,33 @@
+version: "3.8"
+
+services:
+  backend:
+    build: .
+    container_name: card_reader_backend
+    env_file:
+      - .env
+    restart: always
+    expose:
+      - "8000"
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      - card-network
+
+  frontend:
+    build:
+      context: ./card-reader-ui
+      args:
+        REACT_APP_API_URL: https://cards.accosoftsolutions.com/api
+    container_name: card_reader_frontend
+    restart: always
+    expose:
+      - "80"
+    depends_on:
+      - backend
+    networks:
+      - card-network
+
+networks:
+  card-network:
+    driver: bridge
