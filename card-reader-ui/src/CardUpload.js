@@ -4,8 +4,14 @@ import Webcam from "react-webcam";
 
 
 
-function CardUpload() {
+function CardUpload({ authToken, currentUser, onLogout }) {
   const API_BASE_URL = process.env.REACT_APP_API_URL || "http://localhost:8000";
+
+  const authConfig = {
+    headers: {
+      Authorization: `Bearer ${authToken}`
+    }
+  };
 
   const [file, setFile] = useState(null);
   const [data, setData] = useState({
@@ -66,7 +72,7 @@ function CardUpload() {
     formData.append("file", file);
 
     try {
-      const response = await axios.post(`${API_BASE_URL}/extract`, formData);
+      const response = await axios.post(`${API_BASE_URL}/extract`, formData, authConfig);
       const resData = response.data.data;
       
       // Map data to state for editing
@@ -89,7 +95,7 @@ function CardUpload() {
   // 3. Save Function for edited data
   const handleSaveToDatabase = async () => {
     try {
-      await axios.post(`${API_BASE_URL}/save`, data);
+      await axios.post(`${API_BASE_URL}/save`, data, authConfig);
       alert("✅ Data saved to Database successfully!");
     } catch (error) {
       console.error("Save failed", error);
@@ -99,7 +105,7 @@ function CardUpload() {
   // 4. Fetch all saved cards from the database
   const handleViewDatabase = async () => {
     try {
-      const response = await axios.get(`${API_BASE_URL}/cards`);
+      const response = await axios.get(`${API_BASE_URL}/cards`, authConfig);
       setDatabaseRecords(response.data.data);
       setShowDatabase(true); // Switch the view to show the table
     } catch (error) {
@@ -107,6 +113,28 @@ function CardUpload() {
       alert("Could not load database records.");
     }
   }; 
+
+  const handleDownloadAll = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/download-all`, {
+        responseType: "blob",
+        headers: {
+          Authorization: `Bearer ${authToken}`
+        }
+      });
+      const blob = new Blob([response.data], { type: "text/csv" });
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.setAttribute("download", "all_business_cards.csv");
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    } catch (error) {
+      console.error("Failed to download database", error);
+      alert("Could not download database.");
+    }
+  };
   const handleDownloadSingle = (record) => {
     // Format the data as a CSV string
     const csvContent = "data:text/csv;charset=utf-8," 
@@ -127,30 +155,48 @@ function CardUpload() {
     document.body.removeChild(link);
   };
 
-  // Commented out until authentication is added
-  // const handleDelete = async (id) => {
-  //   // Add a quick confirmation popup so you don't delete by accident
-  //   if (!window.confirm("Are you sure you want to delete this card?")) return;
-  //   
-  //   try {
-  //     await axios.delete(`${API_BASE_URL}/cards/${id}`);
-  //     // Remove the deleted card from the screen without reloading the page
-  //     setDatabaseRecords(databaseRecords.filter(record => record.id !== id));
-  //   } catch (error) {
-  //     console.error("Failed to delete", error);
-  //     alert("Failed to delete the card.");
-  //   }
-  // };
+  const handleDelete = async (id) => {
+    // Add a quick confirmation popup so you don't delete by accident
+    if (!window.confirm("Are you sure you want to delete this card?")) return;
+    
+    try {
+      await axios.delete(`${API_BASE_URL}/cards/${id}`, authConfig);
+      // Remove the deleted card from the screen without reloading the page
+      setDatabaseRecords(databaseRecords.filter(record => record.id !== id));
+    } catch (error) {
+      console.error("Failed to delete", error);
+      alert("Failed to delete the card.");
+    }
+  };
 
   return (
     <div className="min-h-screen bg-gray-100 p-4 md:p-8">
       <div className="max-w-4xl mx-auto">
-        <header className="text-center mb-8 md:mb-10">
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-800 tracking-tight">Accosoft Solution - Card Reader</h1>
+        <header className="mb-8 md:mb-10">
+          <div className="flex flex-col sm:flex-row justify-between items-center gap-4 pb-4 border-b border-gray-100 mb-6">
+            <h1 className="text-xl md:text-2xl font-bold text-gray-800 tracking-tight text-center sm:text-left">
+              Accosoft Solution - Card Reader
+            </h1>
+            {currentUser && (
+              <div className="flex items-center gap-3">
+                <span className="text-xs md:text-sm text-gray-500 font-semibold bg-gray-50 px-3 py-1.5 rounded-xl border border-gray-200">
+                  👤 {currentUser.username}
+                </span>
+                <button 
+                  onClick={onLogout} 
+                  className="bg-red-50 text-red-600 px-4 py-1.5 rounded-xl text-xs font-bold hover:bg-red-100 transition shadow-sm"
+                >
+                  Logout ➔
+                </button>
+              </div>
+            )}
+          </div>
           {isExtracted && (
-            <button onClick={handleReset} className="text-blue-500 hover:text-blue-700 underline mt-2 transition">
-              Upload New Card
-            </button>
+            <div className="text-center">
+              <button onClick={handleReset} className="text-blue-500 hover:text-blue-700 underline transition text-sm font-semibold">
+                ← Upload New Card
+              </button>
+            </div>
           )}
         </header>
 
@@ -172,23 +218,26 @@ function CardUpload() {
               </button>
             </div>
 
-            {/* --- NEW CENTERED VIEW DATABASE & DOWNLOAD BUTTONS --- */}
-            <div className="mt-10 pt-8 border-t border-gray-100 flex flex-col sm:flex-row gap-4 justify-center items-center">
-              <button 
-                onClick={handleViewDatabase} 
-                className="inline-flex items-center gap-2 bg-gray-800 text-white px-8 py-3 rounded-xl font-bold hover:bg-black hover:scale-105 transition shadow-lg active:scale-95"
-              >
-                🗄️ View Existing Database
-              </button>
-              <a 
-                href={`${API_BASE_URL}/download-all`}
-                download 
-                className="inline-flex items-center gap-2 bg-green-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-green-700 hover:scale-105 transition shadow-lg active:scale-95 text-sm"
-              >
-                📥 Download Full DB (.csv)
-              </a>
-            </div>
-            <p className="text-gray-400 text-sm mt-3">Access, manage, or export previously saved business cards</p>
+            {/* --- NEW CENTERED VIEW DATABASE & DOWNLOAD BUTTONS (Admin Only) --- */}
+            {currentUser && currentUser.role === "admin" && (
+              <>
+                <div className="mt-10 pt-8 border-t border-gray-100 flex flex-col sm:flex-row gap-4 justify-center items-center">
+                  <button 
+                    onClick={handleViewDatabase} 
+                    className="inline-flex items-center gap-2 bg-gray-800 text-white px-8 py-3 rounded-xl font-bold hover:bg-black hover:scale-105 transition shadow-lg active:scale-95"
+                  >
+                    🗄️ View Existing Database
+                  </button>
+                  <button 
+                    onClick={handleDownloadAll}
+                    className="inline-flex items-center gap-2 bg-green-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-green-700 hover:scale-105 transition shadow-lg active:scale-95 text-sm"
+                  >
+                    📥 Download Full DB (.csv)
+                  </button>
+                </div>
+                <p className="text-gray-400 text-sm mt-3">Access, manage, or export previously saved business cards</p>
+              </>
+            )}
           </div>
         )}
         {/* 2. CAMERA INTERFACE: With Switch Toggle */}
@@ -260,15 +309,19 @@ function CardUpload() {
                 <img src={URL.createObjectURL(file)} alt="Card" className="rounded-lg max-h-full w-auto p-2" />
               </div>
               
-              <button onClick={handleViewDatabase} className="mt-4 md:mt-6 w-full bg-gray-800 text-white py-3 rounded-xl font-bold hover:bg-black transition shadow-lg flex items-center justify-center gap-2 text-sm md:text-base"> 
-                 🗄️ View Database 
-              </button>
-              <a 
-                href={`${API_BASE_URL}/download-all`}
-                download 
-                className="mt-3 md:mt-4 w-full bg-gray-800 text-white py-3 rounded-xl font-bold hover:bg-black transition shadow-lg flex items-center justify-center gap-2 text-sm md:text-base">
-                 Download Full DB (.csv)
-              </a>
+              {currentUser && currentUser.role === "admin" && (
+                <>
+                  <button onClick={handleViewDatabase} className="mt-4 md:mt-6 w-full bg-gray-800 text-white py-3 rounded-xl font-bold hover:bg-black transition shadow-lg flex items-center justify-center gap-2 text-sm md:text-base"> 
+                     🗄️ View Database 
+                  </button>
+                  <button 
+                    onClick={handleDownloadAll}
+                    className="mt-3 md:mt-4 w-full bg-gray-800 text-white py-3 rounded-xl font-bold hover:bg-black transition shadow-lg flex items-center justify-center gap-2 text-sm md:text-base"
+                  >
+                     Download Full DB (.csv)
+                  </button>
+                </>
+              )}
             </div>
 
             <div className="bg-white p-4 md:p-6 rounded-2xl shadow-md flex flex-col h-full border border-gray-100">
@@ -295,13 +348,12 @@ function CardUpload() {
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
               <h2 className="text-xl md:text-2xl font-bold text-gray-800">Saved Business Cards</h2>
               <div className="flex items-center gap-3 w-full sm:w-auto justify-end">
-                <a 
-                  href={`${API_BASE_URL}/download-all`}
-                  download 
+                <button 
+                  onClick={handleDownloadAll}
                   className="bg-green-600 text-white px-4 py-2 rounded-xl text-xs md:text-sm font-bold hover:bg-green-700 transition flex items-center gap-1.5 shadow"
                 >
                   📥 Download Full DB (.csv)
-                </a>
+                </button>
                 <button onClick={() => setShowDatabase(false)} className="text-gray-500 hover:text-red-500 font-bold text-sm md:text-base">
                   Close Viewer ✖
                 </button>
@@ -327,6 +379,13 @@ function CardUpload() {
                           title="Download CSV"
                         >
                           ⬇️
+                        </button>
+                        <button 
+                          onClick={() => handleDelete(record.id)} 
+                          className="bg-red-100 text-red-700 p-2 rounded-lg hover:bg-red-200 transition text-sm font-bold flex items-center justify-center w-8 h-8"
+                          title="Delete"
+                        >
+                          🗑️
                         </button>
                       </div>
                     </div>
@@ -386,6 +445,13 @@ function CardUpload() {
                             title="Download CSV"
                           >
                             ⬇️
+                          </button>
+                          <button 
+                            onClick={() => handleDelete(record.id)} 
+                            className="bg-red-100 text-red-700 px-3 py-1 rounded hover:bg-red-200 transition text-xs font-bold"
+                            title="Delete"
+                          >
+                            🗑️
                           </button>
                         </td>
                       </tr>

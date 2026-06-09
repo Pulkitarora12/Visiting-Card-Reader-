@@ -38,8 +38,22 @@ def create_database_and_table():
         )
         """
         cursor.execute(create_table_query)
+
+        # Create Users table for authentication
+        create_users_table_query = """
+        CREATE TABLE IF NOT EXISTS users (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            username VARCHAR(255) UNIQUE NOT NULL,
+            email VARCHAR(255) UNIQUE NOT NULL,
+            hashed_password VARCHAR(255) NOT NULL,
+            role VARCHAR(50) DEFAULT 'user',
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        )
+        """
+        cursor.execute(create_users_table_query)
+
         conn.commit()
-        print("Database and table verified/created.")
+        print("Database and tables verified/created.")
     except Error as e:
         print(f"Error initializing database: {e}")
     finally:
@@ -145,4 +159,54 @@ def export_full_database(file_path="data/samples/full_database_export.csv"): # C
         return None
     finally:
         if 'conn' in locals() and conn.is_connected():
+            conn.close()
+
+def create_user(username, email, hashed_password):
+    """Inserts a new user into the database."""
+    try:
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor()
+        query = """
+        INSERT INTO users (username, email, hashed_password, role)
+        VALUES (%s, %s, %s, 'user')
+        """
+        cursor.execute(query, (username, email, hashed_password))
+        conn.commit()
+        return True
+    except Error as e:
+        print(f"Error creating user: {e}")
+        return False
+    finally:
+        if 'conn' in locals() and conn.is_connected():
+            cursor.close()
+            conn.close()
+
+def get_user_by_username(username):
+    """Fetches a user profile by username."""
+    try:
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM users WHERE username = %s", (username,))
+        return cursor.fetchone()
+    except Error as e:
+        print(f"Error getting user: {e}")
+        return None
+    finally:
+        if 'conn' in locals() and conn.is_connected():
+            cursor.close()
+            conn.close()
+
+def get_user_by_email(email):
+    """Fetches a user profile by email."""
+    try:
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT * FROM users WHERE email = %s", (email,))
+        return cursor.fetchone()
+    except Error as e:
+        print(f"Error getting user: {e}")
+        return None
+    finally:
+        if 'conn' in locals() and conn.is_connected():
+            cursor.close()
             conn.close()
