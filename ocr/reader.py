@@ -204,15 +204,6 @@ def extract_raw_text(image_path):
         final_refined_data = redefine_with_llm(data, image_path)
         if final_refined_data:
             final_refined_data["debug_raw"] = text.strip()
-
-            try:
-                sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-                from database_manager import save_to_mysql
-                save_to_mysql(final_refined_data)
-                print("Successfully saved to DataBase")
-            except Exception as save_err:
-                print(f"Error calling database manager : {save_err}")
-
             return final_refined_data
         return data
     except Exception as e:
