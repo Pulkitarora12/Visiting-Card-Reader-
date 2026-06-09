@@ -40,10 +40,10 @@ function Signup({ onSignupSuccess, onNavigateToLogin, apiBaseUrl }) {
       });
       const data = response.data;
       if (data.status === "success") {
-        setSuccessMsg("🎉 Registration successful! Redirecting to login...");
+        setSuccessMsg("🎉 Registration submitted! Please ask your administrator to verify your account before logging in.");
         setTimeout(() => {
           onSignupSuccess();
-        }, 1500);
+        }, 4000);
       } else {
         setError(data.message || "Signup failed.");
       }

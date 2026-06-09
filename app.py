@@ -1,5 +1,12 @@
 import os
+from dotenv import load_dotenv
+load_dotenv()  # Load environment variables from .env file
+
 import shutil
+import random
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
 from datetime import datetime, timedelta, timezone
 import jwt
 import bcrypt
@@ -9,7 +16,13 @@ from fastapi.responses import FileResponse
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from ocr.reader import extract_raw_text
-from database_manager import create_user, get_user_by_username, get_user_by_email
+from database_manager import (
+    create_user,
+    get_user_by_username,
+    get_user_by_email,
+    get_pending_users,
+    verify_user_in_db
+)
 
 # Auth configurations
 SECRET_KEY = os.getenv("JWT_SECRET", "supersecretkey_change_in_production_2026")
@@ -26,6 +39,10 @@ class SignupRequest(BaseModel):
 class LoginRequest(BaseModel):
     username: str
     password: str
+
+class VerifyUserRequest(BaseModel):
+    username: str
+    otp: str
 
 def hash_password(password: str) -> str:
     salt = bcrypt.gensalt()
@@ -65,6 +82,46 @@ def require_admin(current_user: dict = Depends(get_current_user)):
         )
     return current_user
 
+SMTP_EMAIL = os.getenv("SMTP_EMAIL", "pulkitpulkitarr@gmail.com")
+ADMIN_EMAIL = os.getenv("ADMIN_EMAIL", "pulkitpulkitarr@gmail.com")
+SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
+
+def send_otp_to_admin(username: str, email: str, otp: str):
+    if not SMTP_EMAIL or not SMTP_PASSWORD:
+        print("SMTP_EMAIL or SMTP_PASSWORD is not set in environment variables.")
+        return False
+    
+    try:
+        msg = MIMEMultipart()
+        msg["From"] = SMTP_EMAIL
+        msg["To"] = ADMIN_EMAIL
+        msg["Subject"] = f"Accosoft OTP Verification - Approval required for user '{username}'"
+        
+        body = f"""Hello Admin,
+
+A new user has registered on the Accosoft Solution Card Reader system and requires your approval.
+
+User details:
+- Username: {username}
+- Email: {email}
+
+Please log in to the admin panel and enter the following verification code to approve their account:
+
+Verification Code (OTP): {otp}
+
+Regards,
+Accosoft Card Reader Team
+"""
+        msg.attach(MIMEText(body, "plain"))
+        
+        with smtplib.SMTP_SSL("smtp.gmail.com", 465) as server:
+            server.login(SMTP_EMAIL, SMTP_PASSWORD)
+            server.sendmail(SMTP_EMAIL, ADMIN_EMAIL, msg.as_string())
+        return True
+    except Exception as e:
+        print(f"Failed to send email to admin: {e}")
+        return False
+
 app = FastAPI()
 
 # cross-origin resource sharing 
@@ -90,11 +147,27 @@ async def signup(data: SignupRequest):
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Email is already registered")
         
     hashed = hash_password(data.password)
-    success = create_user(data.username, data.email, hashed)
+    otp = f"{random.randint(100000, 999999)}"
+    
+    success = create_user(data.username, data.email, hashed, otp)
     if not success:
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to create user account")
         
-    return {"status": "success", "message": "User registered successfully"}
+    # Send OTP to admin
+    email_sent = send_otp_to_admin(data.username, data.email, otp)
+    if not email_sent:
+        # Fallback for local testing/development: print to server console
+        print("\n" + "="*80)
+        print(f"DEVELOPER FALLBACK: EMAIL SENDING FAILED FOR USER '{data.username}'")
+        print(f"VERIFICATION OTP IS: {otp}")
+        print("="*80 + "\n")
+        
+        return {
+            "status": "success", 
+            "message": "Registration submitted! (Note: Email failed to send, but account was created. Check server console for verification OTP.)"
+        }
+        
+    return {"status": "success", "message": "Registration submitted! Please ask your administrator to verify your account."}
 
 @app.post("/login")
 async def login(data: LoginRequest):
@@ -105,6 +178,13 @@ async def login(data: LoginRequest):
         
     if not user or not verify_password(data.password, user["hashed_password"]):
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Invalid username/email or password")
+        
+    # Check if user is verified (admins are always verified or bypass)
+    if not user.get("is_verified") and user.get("role") != "admin":
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Your account is pending administrator approval."
+        )
         
     token = create_access_token({
         "sub": user["username"],
@@ -194,4 +274,21 @@ async def download_all_cards(current_user: dict = Depends(require_admin)):
         # Debugging: Print why it failed
         print(f"Download failed. File path was: {file_path}")
         return {"status": "error", "message": "File not found on server."}
+
+@app.get("/admin/pending-users")
+async def list_pending_users(current_user: dict = Depends(require_admin)):
+    """Returns all pending users to the admin."""
+    users = get_pending_users()
+    return {"status": "success", "data": users}
+
+@app.post("/admin/verify-user")
+async def verify_pending_user(payload: VerifyUserRequest, current_user: dict = Depends(require_admin)):
+    """Verifies a pending user with their OTP."""
+    success = verify_user_in_db(payload.username, payload.otp)
+    if not success:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Invalid OTP or user is already verified"
+        )
+    return {"status": "success", "message": f"User '{payload.username}' has been successfully verified."}
    

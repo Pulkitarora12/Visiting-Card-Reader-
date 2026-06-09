@@ -28,6 +28,12 @@ function CardUpload({ authToken, currentUser, onLogout }) {
   const [databaseRecords, setDatabaseRecords] = useState([]);
   const [showDatabase, setShowDatabase] = useState(false);
 
+  // New state variables for OTP pending approvals
+  const [pendingUsers, setPendingUsers] = useState([]);
+  const [showPendingApprovals, setShowPendingApprovals] = useState(false);
+  const [otpInputs, setOtpInputs] = useState({});
+  const [verifyingUser, setVerifyingUser] = useState(null);
+
   // new state for camera
   const[sourceType , setSourceType] = useState(null);
   const [isPreviewing, setIsPreviewing] = useState(false); //preview the clicked photo
@@ -48,6 +54,8 @@ function CardUpload({ authToken, currentUser, onLogout }) {
     setSourceType(null);
     setIsPreviewing(false);
     setLoading(false);
+    setShowDatabase(false);
+    setShowPendingApprovals(false);
   };
   const toggleCamera = () => {
     setFacingMode((prevMode) => (prevMode === "user" ? "environment" : "user"));
@@ -108,11 +116,53 @@ function CardUpload({ authToken, currentUser, onLogout }) {
       const response = await axios.get(`${API_BASE_URL}/cards`, authConfig);
       setDatabaseRecords(response.data.data);
       setShowDatabase(true); // Switch the view to show the table
+      setShowPendingApprovals(false); // Close approvals
     } catch (error) {
       console.error("Failed to fetch database", error);
       alert("Could not load database records.");
     }
   }; 
+
+  const handleViewPendingApprovals = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/admin/pending-users`, authConfig);
+      setPendingUsers(response.data.data);
+      setShowPendingApprovals(true);
+      setShowDatabase(false);
+    } catch (error) {
+      console.error("Failed to fetch pending users", error);
+      alert("Could not load pending registrations.");
+    }
+  };
+
+  const handleVerifyUser = async (username) => {
+    const otp = otpInputs[username];
+    if (!otp || otp.trim().length !== 6) {
+      alert("Please enter a valid 6-digit OTP.");
+      return;
+    }
+
+    setVerifyingUser(username);
+    try {
+      await axios.post(`${API_BASE_URL}/admin/verify-user`, {
+        username: username,
+        otp: otp.trim()
+      }, authConfig);
+      
+      alert(`✅ User '${username}' successfully verified and activated!`);
+      setPendingUsers(pendingUsers.filter(u => u.username !== username));
+      setOtpInputs(prev => {
+        const copy = { ...prev };
+        delete copy[username];
+        return copy;
+      });
+    } catch (error) {
+      console.error("Failed to verify user", error);
+      alert(error.response?.data?.detail || "Verification failed. Invalid OTP.");
+    } finally {
+      setVerifyingUser(null);
+    }
+  };
 
   const handleDownloadAll = async () => {
     try {
@@ -191,7 +241,43 @@ function CardUpload({ authToken, currentUser, onLogout }) {
               </div>
             )}
           </div>
-          {isExtracted && (
+          {/* Admin Navigation Tabs */}
+          {currentUser && currentUser.role === "admin" && (
+            <div className="flex flex-wrap justify-center gap-3 mb-6 bg-white p-2.5 rounded-2xl border border-gray-100 shadow-sm">
+              <button 
+                onClick={handleReset} 
+                className={`px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all ${
+                  !showDatabase && !showPendingApprovals 
+                    ? "bg-blue-600 text-white shadow-md" 
+                    : "bg-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50"
+                }`}
+              >
+                📷 Scan Card
+              </button>
+              <button 
+                onClick={handleViewDatabase} 
+                className={`px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all ${
+                  showDatabase 
+                    ? "bg-blue-600 text-white shadow-md" 
+                    : "bg-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50"
+                }`}
+              >
+                🗄️ View Database
+              </button>
+              <button 
+                onClick={handleViewPendingApprovals} 
+                className={`px-5 py-2.5 rounded-xl text-xs md:text-sm font-bold transition-all ${
+                  showPendingApprovals 
+                    ? "bg-blue-600 text-white shadow-md" 
+                    : "bg-transparent text-gray-500 hover:text-gray-800 hover:bg-gray-50"
+                }`}
+              >
+                🔑 Pending Approvals
+              </button>
+            </div>
+          )}
+
+          {isExtracted && !showDatabase && !showPendingApprovals && (
             <div className="text-center">
               <button onClick={handleReset} className="text-blue-500 hover:text-blue-700 underline transition text-sm font-semibold">
                 ← Upload New Card
@@ -202,7 +288,7 @@ function CardUpload({ authToken, currentUser, onLogout }) {
 
         {/* 1. CHOICE MENU */}
         {/* 1. CHOICE MENU */}
-        {!isExtracted && !sourceType && (
+        {!showDatabase && !showPendingApprovals && !isExtracted && !sourceType && (
           <div className="bg-white p-6 md:p-10 rounded-2xl shadow-xl text-center border border-gray-100 animate-fade-in">
             <h2 className="text-xl md:text-2xl font-bold mb-6 md:mb-8 text-gray-700">How would you like to start?</h2>
             
@@ -221,12 +307,18 @@ function CardUpload({ authToken, currentUser, onLogout }) {
             {/* --- NEW CENTERED VIEW DATABASE & DOWNLOAD BUTTONS (Admin Only) --- */}
             {currentUser && currentUser.role === "admin" && (
               <>
-                <div className="mt-10 pt-8 border-t border-gray-100 flex flex-col sm:flex-row gap-4 justify-center items-center">
+                <div className="mt-10 pt-8 border-t border-gray-100 flex flex-wrap gap-4 justify-center items-center">
                   <button 
                     onClick={handleViewDatabase} 
                     className="inline-flex items-center gap-2 bg-gray-800 text-white px-8 py-3 rounded-xl font-bold hover:bg-black hover:scale-105 transition shadow-lg active:scale-95"
                   >
                     🗄️ View Existing Database
+                  </button>
+                  <button 
+                    onClick={handleViewPendingApprovals} 
+                    className="inline-flex items-center gap-2 bg-purple-600 text-white px-8 py-3 rounded-xl font-bold hover:bg-purple-700 hover:scale-105 transition shadow-lg active:scale-95 text-sm"
+                  >
+                    🔑 Pending Approvals
                   </button>
                   <button 
                     onClick={handleDownloadAll}
@@ -235,13 +327,13 @@ function CardUpload({ authToken, currentUser, onLogout }) {
                     📥 Download Full DB (.csv)
                   </button>
                 </div>
-                <p className="text-gray-400 text-sm mt-3">Access, manage, or export previously saved business cards</p>
+                <p className="text-gray-400 text-sm mt-3">Access, manage, or approve user registrations</p>
               </>
             )}
           </div>
         )}
         {/* 2. CAMERA INTERFACE: With Switch Toggle */}
-        {!isExtracted && sourceType === 'camera' && !isPreviewing && (
+        {!showDatabase && !showPendingApprovals && !isExtracted && sourceType === 'camera' && !isPreviewing && (
           <div className="bg-white p-4 md:p-8 rounded-2xl shadow-lg text-center border border-gray-100 animate-fade-in">
             <div className="relative inline-block overflow-hidden rounded-xl border-4 border-gray-100 mb-6 shadow-inner w-full max-w-md">
               <Webcam 
@@ -269,7 +361,7 @@ function CardUpload({ authToken, currentUser, onLogout }) {
         )}
 
         {/* 3. SNAPSHOT PREVIEW */}
-        {!isExtracted && isPreviewing && (
+        {!showDatabase && !showPendingApprovals && !isExtracted && isPreviewing && (
           <div className="bg-white p-4 md:p-8 rounded-2xl shadow-lg text-center border-2 border-blue-50 animate-fade-in">
             <h3 className="text-lg md:text-xl font-bold text-gray-700 mb-6">Confirm Captured Photo</h3>
             <div className="inline-block overflow-hidden rounded-xl border-4 border-white shadow-md mb-6 w-full max-w-md">
@@ -287,7 +379,7 @@ function CardUpload({ authToken, currentUser, onLogout }) {
         )}
 
         {/* 4. UPLOAD SECTION */}
-        {!isExtracted && sourceType === 'file' && (
+        {!showDatabase && !showPendingApprovals && !isExtracted && sourceType === 'file' && (
           <div className="bg-white p-4 md:p-8 rounded-2xl shadow-lg mb-6 border border-gray-100 animate-fade-in">
             <h3 className="text-base md:text-lg font-bold text-gray-700 mb-4">Upload card image</h3>
             <div className="flex flex-col sm:flex-row gap-4 items-stretch sm:items-center">
@@ -301,7 +393,7 @@ function CardUpload({ authToken, currentUser, onLogout }) {
         )}
 
         {/* 5. RESULT SECTION */}
-        {isExtracted && (
+        {!showDatabase && !showPendingApprovals && isExtracted && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 md:gap-8 animate-fade-in">
             <div className="bg-white p-4 md:p-6 rounded-2xl shadow-md flex flex-col h-full border border-gray-100">
               <h3 className="font-bold text-gray-700 mb-4 flex items-center gap-2">🖼️ Card Preview</h3>
@@ -393,7 +485,7 @@ function CardUpload({ authToken, currentUser, onLogout }) {
                       {record.emails && (
                         <div className="flex items-center gap-2">
                           <span className="text-gray-400">📧</span>
-                          <a href={`mailto:${record.emails}`} className="text-blue-600 break-all underline">{record.emails}</a>
+                           <a href={`mailto:${record.emails}`} className="text-blue-600 break-all underline">{record.emails}</a>
                         </div>
                       )}
                       {record.phone_numbers && (
@@ -462,9 +554,64 @@ function CardUpload({ authToken, currentUser, onLogout }) {
             </div>
           </div>
         )}
+
+        {/* 7. PENDING APPROVALS SECTION */}
+        {showPendingApprovals && (
+          <div className="mt-8 md:mt-12 bg-white p-4 md:p-8 rounded-2xl shadow-xl border border-gray-100 animate-fade-in">
+            <div className="flex justify-between items-center pb-4 border-b border-gray-100 mb-6">
+              <h2 className="text-xl md:text-2xl font-bold text-gray-800">Pending Registrations</h2>
+              <button onClick={() => setShowPendingApprovals(false)} className="text-gray-500 hover:text-red-500 font-bold text-sm md:text-base">
+                Close Viewer ✖
+              </button>
+            </div>
+
+            {pendingUsers.length === 0 ? (
+              <div className="p-10 text-center text-gray-400 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                <span className="text-4xl mb-3 block">🎉</span>
+                <p className="font-semibold text-gray-600">All registered users are verified!</p>
+                <p className="text-sm text-gray-400 mt-1">There are no pending registrations requiring approval.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {pendingUsers.map((user) => (
+                  <div key={user.id} className="bg-gray-50 p-4 md:p-6 rounded-xl border border-gray-150 shadow-sm flex flex-col md:flex-row md:items-center justify-between gap-4">
+                    <div>
+                      <h4 className="font-bold text-gray-900 text-base md:text-lg flex items-center gap-2">
+                        👤 {user.username}
+                      </h4>
+                      <p className="text-sm text-blue-600 font-medium">{user.email}</p>
+                      <p className="text-xs text-gray-400 mt-1">Registered: {new Date(user.created_at).toLocaleString()}</p>
+                    </div>
+                    <div className="flex items-center gap-3 w-full md:w-auto">
+                      <input 
+                        type="text" 
+                        maxLength="6"
+                        placeholder="OTP Code"
+                        value={otpInputs[user.username] || ""}
+                        onChange={(e) => setOtpInputs({
+                          ...otpInputs,
+                          [user.username]: e.target.value
+                        })}
+                        className="border-gray-200 bg-white border px-3 py-2 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 text-center font-bold tracking-widest text-sm w-32"
+                        disabled={verifyingUser === user.username}
+                      />
+                      <button
+                        onClick={() => handleVerifyUser(user.username)}
+                        disabled={verifyingUser === user.username}
+                        className="bg-green-600 text-white px-5 py-2 rounded-xl font-bold hover:bg-green-700 transition shadow-md disabled:bg-gray-400 text-xs md:text-sm flex-grow md:flex-grow-0 min-h-[40px]"
+                      >
+                        {verifyingUser === user.username ? "Verifying..." : "Verify & Approve"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
       </div>
     </div>
   );
 }
 
-export default CardUpload;
+export default CardUpload;

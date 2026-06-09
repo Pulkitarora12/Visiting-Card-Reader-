@@ -2,6 +2,8 @@ import mysql.connector
 from mysql.connector import Error
 import pandas as pd
 import os
+from dotenv import load_dotenv
+load_dotenv()
 
 #  CREDENTIALS FOR YOUR LOCAL SETUP
 db_config = {
@@ -47,6 +49,8 @@ def create_database_and_table():
             email VARCHAR(255) UNIQUE NOT NULL,
             hashed_password VARCHAR(255) NOT NULL,
             role VARCHAR(50) DEFAULT 'user',
+            is_verified BOOLEAN DEFAULT FALSE,
+            otp VARCHAR(6) NULL,
             created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
         )
         """
@@ -161,16 +165,16 @@ def export_full_database(file_path="data/samples/full_database_export.csv"): # C
         if 'conn' in locals() and conn.is_connected():
             conn.close()
 
-def create_user(username, email, hashed_password):
-    """Inserts a new user into the database."""
+def create_user(username, email, hashed_password, otp):
+    """Inserts a new user in pending verification state."""
     try:
         conn = mysql.connector.connect(**db_config)
         cursor = conn.cursor()
         query = """
-        INSERT INTO users (username, email, hashed_password, role)
-        VALUES (%s, %s, %s, 'user')
+        INSERT INTO users (username, email, hashed_password, role, is_verified, otp)
+        VALUES (%s, %s, %s, 'user', FALSE, %s)
         """
-        cursor.execute(query, (username, email, hashed_password))
+        cursor.execute(query, (username, email, hashed_password, otp))
         conn.commit()
         return True
     except Error as e:
@@ -206,6 +210,42 @@ def get_user_by_email(email):
     except Error as e:
         print(f"Error getting user: {e}")
         return None
+    finally:
+        if 'conn' in locals() and conn.is_connected():
+            cursor.close()
+            conn.close()
+
+def get_pending_users():
+    """Fetches all unverified users."""
+    try:
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT id, username, email, created_at FROM users WHERE is_verified = FALSE")
+        return cursor.fetchall()
+    except Error as e:
+        print(f"Error getting pending users: {e}")
+        return []
+    finally:
+        if 'conn' in locals() and conn.is_connected():
+            cursor.close()
+            conn.close()
+
+def verify_user_in_db(username, otp):
+    """Verifies a pending user by checking their OTP."""
+    try:
+        conn = mysql.connector.connect(**db_config)
+        cursor = conn.cursor(dictionary=True)
+        cursor.execute("SELECT otp FROM users WHERE username = %s AND is_verified = FALSE", (username,))
+        row = cursor.fetchone()
+        if not row or row["otp"] != otp:
+            return False
+            
+        cursor.execute("UPDATE users SET is_verified = TRUE, otp = NULL WHERE username = %s", (username,))
+        conn.commit()
+        return True
+    except Error as e:
+        print(f"Error verifying user: {e}")
+        return False
     finally:
         if 'conn' in locals() and conn.is_connected():
             cursor.close()
